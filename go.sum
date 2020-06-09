@@ -1,0 +1,16 @@
+github.com/demosdemon/cpanic v0.0.0-20200131201955-91b02bfbf1d0 h1:O/PQZnLpa5OSPXPs44s9W7s8ORLoaAGTBQwDtXSREhI=
+github.com/demosdemon/cpanic v0.0.0-20200131201955-91b02bfbf1d0/go.mod h1:LtHfUGMzGvjnHos230GqxbVDgZa6gSqHZ7hYjFPIIcM=
+github.com/demosdemon/multierrgroup v0.0.0-20200131204854-9fdb9daf2686 h1:K3+eJwYqRQgFoNDVV4Gj2Kx0ps80xdw3G76sL8R8m2I=
+github.com/demosdemon/multierrgroup v0.0.0-20200131204854-9fdb9daf2686/go.mod h1:A/SGLniK8ArflqgVPjgxLpINUmYBZVIEGbAXzX11It4=
+github.com/google/go-querystring v1.0.0 h1:Xkwi/a1rcvNg1PPYe5vI8GbeBY/jrVuDX5ASuANWTrk=
+github.com/google/go-querystring v1.0.0/go.mod h1:odCYkC5MyYFN7vkCjXpyrEuKhc/BUO6wN/zVPAxq5ck=
+github.com/hashicorp/errwrap v1.0.0 h1:hLrqtEDnRye3+sgx6z4qVLNuviH3MR5aQ0ykNJa/UYA=
+github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
+github.com/hashicorp/go-multierror v1.0.0 h1:iVjPR7a6H0tWELX5NxNe7bYopibicUzc7uPribsnS6o=
+github.com/hashicorp/go-multierror v1.0.0/go.mod h1:dHtQlpGsu+cZNNAkkCN/P3hoUDHhCYQXV3UM06sGGrk=
+github.com/hashicorp/go-multierror v1.1.0 h1:B9UzwGQJehnUY1yNrnwREHc3fGbC2xefo8g4TbElacI=
+github.com/hashicorp/go-multierror v1.1.0/go.mod h1:spPvp8C1qA32ftKqdAHm4hHTbPw+vmowP0z+KUhOZdA=
+github.com/peterhellberg/link v1.1.0 h1:s2+RH8EGuI/mI4QwrWGSYQCRz7uNgip9BaM04HKu5kc=
+github.com/peterhellberg/link v1.1.0/go.mod h1:gtSlOT4jmkY8P47hbTc8PTgiDDWpdPbFYl75keYyBB8=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
