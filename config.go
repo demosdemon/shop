@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
-	"io"
 	"log"
 	"os"
 
@@ -68,21 +65,15 @@ func LoadStores(path string) (<-chan *StoreConfig, error) {
 		return nil, err
 	}
 
-	seen := make(map[string]bool)
 	ch := make(chan *StoreConfig)
 	go func() {
-		defer close(ch)
-		defer func() { _ = fp.Close() }()
-
-		s := bufio.NewScanner(fp)
-		for s.Scan() {
-			r := bytes.NewReader(s.Bytes())
-			d := json.NewDecoder(r)
-
+		seen := make(map[string]bool)
+		dec := json.NewDecoder(fp)
+		for dec.More() {
 			config := new(StoreConfig)
-			if err := d.Decode(config); err != nil {
-				log.Printf("Error decoding StoreConfig: %v", err)
-				log.Println(s.Text())
+			if err := dec.Decode(config); err != nil {
+				log.Printf("error decoding StoreConfig: %v", err)
+				continue
 			}
 
 			if err := config.Validate(); err != nil {
@@ -98,9 +89,8 @@ func LoadStores(path string) (<-chan *StoreConfig, error) {
 			ch <- config
 		}
 
-		if err := s.Err(); err != nil && err != io.EOF {
-			log.Printf("Error reading file (%s): %v", path, err)
-		}
+		close(ch)
+		_ = fp.Close()
 	}()
 
 	return ch, nil
