@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+func NewResponseDecodingError(res *http.Response, err error, data []byte) error {
+	return ResponseDecodingError{
+		ResponseError: ResponseError{
+			Status:  res.StatusCode,
+			Message: err.Error(),
+		},
+		Body: data,
+	}
+}
+
 type ResponseError struct {
 	Status  int
 	Message string
@@ -49,6 +59,25 @@ func (e ResponseError) Error() string {
 	return msg
 }
 
+func (e *ResponseError) setErrors(errors interface{}) {
+	switch errors := errors.(type) {
+	case nil:
+		return
+	case string:
+		e.Message = errors
+	case []interface{}:
+		e.Errors = coerceErrorSlice(errors)
+	case map[string]interface{}:
+		e.Errors = coerceErrorMap(errors)
+	default:
+		if e.Message == "" {
+			e.Message = fmt.Sprint(errors)
+		} else {
+			e.Message = fmt.Sprintf("%s: %v", e.Message, errors)
+		}
+	}
+}
+
 func coerceError(v interface{}) string {
 	const sep = ", "
 
@@ -88,33 +117,4 @@ func coerceErrorMap(v map[string]interface{}) []string {
 		rv[idx] = fmt.Sprintf("%s: %s", k, coerceError(v))
 	}
 	return rv
-}
-
-func (e *ResponseError) setErrors(errors interface{}) {
-	switch errors := errors.(type) {
-	case nil:
-		return
-	case string:
-		e.Message = errors
-	case []interface{}:
-		e.Errors = coerceErrorSlice(errors)
-	case map[string]interface{}:
-		e.Errors = coerceErrorMap(errors)
-	default:
-		if e.Message == "" {
-			e.Message = fmt.Sprint(errors)
-		} else {
-			e.Message = fmt.Sprintf("%s: %v", e.Message, errors)
-		}
-	}
-}
-
-func NewResponseDecodingError(res *http.Response, err error, data []byte) error {
-	return ResponseDecodingError{
-		ResponseError: ResponseError{
-			Status:  res.StatusCode,
-			Message: err.Error(),
-		},
-		Body: data,
-	}
 }
