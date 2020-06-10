@@ -346,9 +346,9 @@ func (c *Client) Do(req *http.Request) (res *http.Response, err error) {
 			wait = rateLimitErr.RetryAfter
 			c.Logger.Warnf("rate limited; waiting %s", wait)
 		}
-		if res.StatusCode == http.StatusServiceUnavailable {
+		if res.StatusCode >= http.StatusInternalServerError {
 			wait = delay(attempts)
-			c.Logger.Warnf("service unavailable; waiting %s", wait)
+			c.Logger.Warnf("%s; waiting %s", res.Status, wait)
 		}
 		if wait <= 0 {
 			return
