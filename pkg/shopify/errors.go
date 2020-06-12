@@ -1,7 +1,9 @@
-package main
+package shopify
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"sort"
 	"strings"
@@ -16,6 +18,37 @@ func NewResponseDecodingError(res *http.Response, err error, data []byte) error 
 		},
 		Body: data,
 	}
+}
+
+func CheckResponseError(res *http.Response) error {
+	if http.StatusOK <= res.StatusCode && res.StatusCode < http.StatusMultipleChoices {
+		return nil
+	}
+
+	var shopifyError struct {
+		Error  string      `json:"error"`
+		Errors interface{} `json:"errors"`
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	if len(body) > 0 {
+		err := json.Unmarshal(body, &shopifyError)
+		if err != nil {
+			return NewResponseDecodingError(res, err, body)
+		}
+	}
+
+	responseError := ResponseError{
+		Status:  res.StatusCode,
+		Message: shopifyError.Error,
+	}
+
+	responseError.setErrors(shopifyError.Errors)
+	return wrapSpecificError(res, responseError)
 }
 
 type ResponseError struct {

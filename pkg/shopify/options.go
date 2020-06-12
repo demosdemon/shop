@@ -1,7 +1,9 @@
-package main
+package shopify
 
 import (
 	"time"
+
+	"github.com/demosdemon/shop/pkg/log"
 )
 
 type Option func(c *Client)
@@ -20,7 +22,7 @@ func WithUserAgent(userAgent string) Option {
 
 func WithHTTPTimeout(httpTimeout time.Duration) Option {
 	return func(c *Client) {
-		c.httpTimeout = &httpTimeout
+		c.Timeout = httpTimeout
 	}
 }
 
@@ -39,6 +41,12 @@ func WithRetryDelay(retryDelay time.Duration) Option {
 func WithRetryJitter(retryJitter time.Duration) Option {
 	return func(c *Client) {
 		c.retryJitter = &retryJitter
+	}
+}
+
+func WithLogger(logger log.Logger) Option {
+	return func(c *Client) {
+		c.logger = logger
 	}
 }
 

@@ -1,4 +1,4 @@
-package main
+package shopify
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -19,13 +19,15 @@ import (
 
 	"github.com/google/go-querystring/query"
 	"github.com/peterhellberg/link"
-	"github.com/pkg/errors"
+
+	"github.com/demosdemon/shop/pkg/log"
+	"github.com/demosdemon/shop/pkg/retry"
 )
 
 const (
 	DefaultAPIVersion  = "2020-04"
 	DefaultUserAgent   = "shop/1.0.0"
-	DefaultHTTPTimeout = 10 * time.Second
+	DefaultHTTPTimeout = 5 * time.Minute
 	DefaultRetryCount  = 10
 	DefaultRetryDelay  = 100 * time.Millisecond
 	DefaultRetryJitter = 100 * time.Millisecond
@@ -42,56 +44,45 @@ const (
 	hUserAgent    = "User-Agent"
 )
 
-type Client struct {
-	StoreID  string
-	Username string
-	Password string
-	Logger   Logger
+func New(storeID, username, password string, options ...Option) *Client {
+	c := &Client{
+		Client:   http.Client{Timeout: DefaultHTTPTimeout},
+		storeID:  storeID,
+		username: username,
+		password: password,
+	}
 
+	for _, opt := range options {
+		opt(c)
+	}
+
+	return c
+}
+
+type Client struct {
 	http.Client
+
+	storeID  string
+	username string
+	password string
+
 	apiVersion  *string
 	userAgent   *string
-	httpTimeout *time.Duration
 	retryCount  *int
 	retryDelay  *time.Duration
 	retryJitter *time.Duration
+	logger      log.Logger
 
-	RateLimitInfo RateLimitInfo
-}
-
-type RateLimitInfo struct {
-	RequestCount int
-	BucketSize   int
-	RetryAfter   time.Duration
-}
-
-func (rl *RateLimitInfo) update(res *http.Response) error {
-	const sep = "/"
-	var err error
-
-	if s := strings.Split(res.Header.Get(hAPICallLimit), sep); len(s) == 2 {
-		rl.RequestCount, err = strconv.Atoi(s[0])
-		if err != nil {
-			return errors.Wrap(err, "error converting request count to an integer")
-		}
-
-		rl.BucketSize, err = strconv.Atoi(s[1])
-		if err != nil {
-			return errors.Wrap(err, "error converting bucket size to an integer")
-		}
-	}
-
-	rl.RetryAfter, err = retryAfter(res)
-	if err != nil {
-		return errors.Wrap(err, "error converting retry after to a duration")
-	}
-
-	return nil
+	rateLimitInfo RateLimitInfo
 }
 
 func (c *Client) BaseURL() (*url.URL, error) {
-	s := fmt.Sprintf(fmtBaseURL, c.StoreID)
+	s := fmt.Sprintf(fmtBaseURL, c.storeID)
 	return url.Parse(s)
+}
+
+func (c *Client) StoreID() string {
+	return c.storeID
 }
 
 func (c *Client) APIVersion() string {
@@ -108,14 +99,6 @@ func (c *Client) UserAgent() string {
 		return DefaultUserAgent
 	}
 	return *s
-}
-
-func (c *Client) HTTPTimeout() time.Duration {
-	d := c.httpTimeout
-	if d == nil {
-		return DefaultHTTPTimeout
-	}
-	return *d
 }
 
 func (c *Client) RetryCount() int {
@@ -142,9 +125,36 @@ func (c *Client) RetryJitter() time.Duration {
 	return *d
 }
 
-func (c *Client) Paginate(ctx context.Context, element string, options interface{}) <-chan PaginationResult {
-	ch := make(chan PaginationResult)
+func (c *Client) Deserialize(res *http.Response, resource interface{}) error {
+	data, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+	if err := res.Body.Close(); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, resource); err != nil {
+		return NewResponseDecodingError(res, err, data)
+	}
+	return nil
+}
 
+func (c *Client) Paginate(ctx context.Context, element string, options interface{}) (<-chan PaginationResult, error) {
+	limit, ok := getLimit(options)
+	if !ok {
+		limit = 50
+	}
+
+	count, err := c.Count(ctx, c.Path(element), options)
+	if err != nil {
+		return nil, err
+	}
+	c.Infof("expecting %d records", count)
+
+	pages := int(math.Ceil(float64(count) / float64(limit)))
+
+	ch := make(chan PaginationResult)
+	records := 0
 	go func() {
 		defer close(ch)
 		relPath := c.Path(element) + ".json"
@@ -152,7 +162,7 @@ func (c *Client) Paginate(ctx context.Context, element string, options interface
 		page := 0
 		for {
 			page++
-			c.Logger.Infof("fetching %s page %d", element, page)
+			c.Infof("fetching %s page %d of %d", element, page, pages)
 			res, err := c.Get(ctx, relPath, options)
 			if err == context.Canceled || err == context.DeadlineExceeded {
 				return
@@ -163,26 +173,15 @@ func (c *Client) Paginate(ctx context.Context, element string, options interface
 				return
 			}
 
-			data, err := ioutil.ReadAll(res.Body)
-			if err != nil {
-				ch <- PaginationResult{err: err}
-				return
-			}
-
-			if err := res.Body.Close(); err != nil {
-				ch <- PaginationResult{err: err}
-				return
-			}
-
 			var resource map[string][]json.RawMessage
-			if err := json.Unmarshal(data, &resource); err != nil {
-				err := NewResponseDecodingError(res, err, data)
+			if err := c.Deserialize(res, &resource); err != nil {
 				ch <- PaginationResult{err: err}
 				return
 			}
 
 			values := resource[element]
 			for _, value := range values {
+				records++
 				ch <- PaginationResult{msg: value}
 			}
 
@@ -195,6 +194,9 @@ func (c *Client) Paginate(ctx context.Context, element string, options interface
 			}
 
 			if options == nil {
+				if count != records {
+					c.Warnf("expected %d records but got %d", count, records)
+				}
 				return
 			}
 
@@ -206,16 +208,16 @@ func (c *Client) Paginate(ctx context.Context, element string, options interface
 				if pi := v.Get("page_info"); pi != "" {
 					dec, err := base64.RawStdEncoding.DecodeString(pi)
 					if err != nil {
-						c.Logger.Warnf("error decoding page info: %v", err)
+						c.Warnf("error decoding page info: %v", err)
 						continue
 					}
-					c.Logger.Debugf("next page info: %s", string(dec))
+					c.Debugf("next page info: %s", string(dec))
 				}
 			}
 		}
 	}()
 
-	return ch
+	return ch, nil
 }
 
 func (c *Client) Count(ctx context.Context, path string, options interface{}) (int, error) {
@@ -304,7 +306,7 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body, opti
 	req.Header.Add(hAccept, mApplicationJSON)
 	req.Header.Add(hUserAgent, c.UserAgent())
 	if u.Host == baseUrl.Host {
-		req.SetBasicAuth(c.Username, c.Password)
+		req.SetBasicAuth(c.username, c.password)
 	}
 
 	return req, nil
@@ -315,46 +317,38 @@ func (c *Client) Do(req *http.Request) (res *http.Response, err error) {
 	delay := delay(c.RetryDelay(), c.RetryJitter())
 	c.logRequest(req)
 
-	attempts := 0
-	for {
-		attempts++
-
-		res, err = c.Client.Do(req)
-		c.logResponse(res)
-
-		if err != nil {
-			// client error, not usually worth retrying
+	err = retry.Go(
+		func() (err error) {
+			res, err = c.Client.Do(req)
+			c.logResponse(res)
+			if err == nil {
+				err = CheckResponseError(res)
+			}
+			if err := c.rateLimitInfo.update(res); err != nil {
+				c.Warnf("error updating rate limit info: %v", err)
+			}
 			return
-		}
+		},
+		retry.WithMaxAttempts(retryCount),
+		retry.WithOnRetry(func(attempt int, wait time.Duration, err error) {
+			c.Infof("attempt %d/%d: %v; sleeping %s", attempt, retryCount, err, wait)
+		}),
+		retry.WithDoRetryWithDelay(func(attempt int, err error) (time.Duration, bool) {
+			if err == context.Canceled || err == context.DeadlineExceeded {
+				return 0, false
+			}
+			if rateLimitErr, ok := err.(RateLimitError); ok {
+				return rateLimitErr.RetryAfter, ok
+			}
+			if resErr, ok := err.(ResponseError); ok {
+				return delay(attempt),
+					!(http.StatusBadRequest <= resErr.Status && resErr.Status < http.StatusInternalServerError)
+			}
+			return delay(attempt), true
+		}),
+	)
 
-		err = c.RateLimitInfo.update(res)
-		if err != nil {
-			return
-		}
-
-		err = CheckResponseError(res)
-		if err == nil {
-			return
-		}
-
-		if retryCount < attempts {
-			return
-		}
-
-		var wait time.Duration
-		if rateLimitErr, ok := err.(RateLimitError); ok {
-			wait = rateLimitErr.RetryAfter
-			c.Logger.Warnf("rate limited; waiting %s", wait)
-		}
-		if res.StatusCode >= http.StatusInternalServerError {
-			wait = delay(attempts)
-			c.Logger.Warnf("%s; waiting %s", res.Status, wait)
-		}
-		if wait <= 0 {
-			return
-		}
-		time.Sleep(wait)
-	}
+	return
 }
 
 func (c *Client) logRequest(req *http.Request) {
@@ -362,17 +356,18 @@ func (c *Client) logRequest(req *http.Request) {
 		return
 	}
 	if req.URL != nil {
-		c.Logger.Infof("%s: %s", req.Method, req.URL)
+		c.Infof("%s: %s", req.Method, req.URL)
 	}
-	// c.logBody(&req.Body, "SENT: %s")
+	c.logBody(&req.Body, "SENT: %s")
 }
 
 func (c *Client) logResponse(res *http.Response) {
 	if res == nil {
+		c.Debugf("nil response")
 		return
 	}
-	c.Logger.Debugf("RECV %03d: %s", res.StatusCode, res.Status)
-	// c.logBody(&res.Body, "RESP: %s")
+	c.Debugf("RECV %03d: %s", res.StatusCode, res.Status)
+	c.logBody(&res.Body, "RESP: %s")
 }
 
 func (c *Client) logBody(body *io.ReadCloser, format string) {
@@ -384,40 +379,38 @@ func (c *Client) logBody(body *io.ReadCloser, format string) {
 	}
 	data, _ := ioutil.ReadAll(*body)
 	if len(data) > 0 {
-		c.Logger.Debugf(format, string(data))
+		c.Tracef(format, string(data))
 	}
 	*body = ioutil.NopCloser(bytes.NewReader(data))
 }
 
-func CheckResponseError(res *http.Response) error {
-	if http.StatusOK <= res.StatusCode && res.StatusCode < http.StatusMultipleChoices {
-		return nil
+func (c *Client) Logf(level log.Level, format string, v ...interface{}) {
+	l := c.logger
+	if l == nil {
+		return
 	}
 
-	var shopifyError struct {
-		Error  string      `json:"error"`
-		Errors interface{} `json:"errors"`
-	}
+	l.Logf(level, format, v...)
+}
 
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
+func (c *Client) Errorf(format string, v ...interface{}) {
+	c.Logf(log.LevelError, format, v...)
+}
 
-	if len(body) > 0 {
-		err := json.Unmarshal(body, &shopifyError)
-		if err != nil {
-			return NewResponseDecodingError(res, err, body)
-		}
-	}
+func (c *Client) Warnf(format string, v ...interface{}) {
+	c.Logf(log.LevelWarn, format, v...)
+}
 
-	responseError := ResponseError{
-		Status:  res.StatusCode,
-		Message: shopifyError.Error,
-	}
+func (c *Client) Infof(format string, v ...interface{}) {
+	c.Logf(log.LevelInfo, format, v...)
+}
 
-	responseError.setErrors(shopifyError.Errors)
-	return wrapSpecificError(res, responseError)
+func (c *Client) Debugf(format string, v ...interface{}) {
+	c.Logf(log.LevelDebug, format, v...)
+}
+
+func (c *Client) Tracef(format string, v ...interface{}) {
+	c.Logf(log.LevelTrace, format, v...)
 }
 
 func delay(initial, jitter time.Duration) func(step int) time.Duration {
@@ -533,22 +526,19 @@ func getNextPageOptions(res *http.Response) (url.Values, error) {
 		return nil, err
 	}
 
-	if q["page_info"] == nil {
-		log.Panicf("page_info missing from next url: %s", l.URI)
-	}
-
 	return q, nil
 }
 
-type PaginationResult struct {
-	msg json.RawMessage
-	err error
-}
+func getLimit(options interface{}) (limit int, ok bool) {
+	if options == nil {
+		return
+	}
 
-func (r PaginationResult) Message() json.RawMessage {
-	return r.msg
-}
-
-func (r PaginationResult) Err() error {
-	return r.err
+	q, err := query.Values(options)
+	if err != nil {
+		q, ok = options.(url.Values)
+	}
+	limit, err = strconv.Atoi(q.Get("limit"))
+	ok = err == nil
+	return
 }

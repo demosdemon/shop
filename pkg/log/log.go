@@ -1,4 +1,4 @@
-package main
+package log
 
 import (
 	"fmt"
@@ -13,29 +13,32 @@ const (
 	LevelWarn
 	LevelInfo
 	LevelDebug
+	LevelTrace
 )
 
+var levelStrings = map[Level]string{
+	LevelError: "ERROR",
+	LevelWarn:  "WARNING",
+	LevelInfo:  "INFO",
+	LevelDebug: "DEBUG",
+	LevelTrace: "TRACE",
+}
+
 func (l Level) String() string {
-	switch l {
-	case LevelError:
-		return "ERROR"
-	case LevelWarn:
-		return "WARNING"
-	case LevelInfo:
-		return "INFO"
-	case LevelDebug:
-		return "DEBUG"
-	default:
-		return "NOTSET"
+	s := levelStrings[l]
+	if s == "" {
+		s = fmt.Sprintf("Level(%d)", l)
 	}
+	return s
 }
 
 type Logger interface {
 	Logf(level Level, format string, v ...interface{})
-	Debugf(format string, v ...interface{})
 	Errorf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
 	Warnf(format string, v ...interface{})
+	Infof(format string, v ...interface{})
+	Debugf(format string, v ...interface{})
+	Tracef(format string, v ...interface{})
 }
 
 type LeveledLogger struct {
@@ -57,7 +60,8 @@ func (l LeveledLogger) Logf(level Level, format string, v ...interface{}) {
 	}
 }
 
-func (l LeveledLogger) Debugf(format string, v ...interface{}) { l.Logf(LevelDebug, format, v...) }
 func (l LeveledLogger) Errorf(format string, v ...interface{}) { l.Logf(LevelError, format, v...) }
-func (l LeveledLogger) Infof(format string, v ...interface{})  { l.Logf(LevelInfo, format, v...) }
 func (l LeveledLogger) Warnf(format string, v ...interface{})  { l.Logf(LevelWarn, format, v...) }
+func (l LeveledLogger) Infof(format string, v ...interface{})  { l.Logf(LevelInfo, format, v...) }
+func (l LeveledLogger) Debugf(format string, v ...interface{}) { l.Logf(LevelDebug, format, v...) }
+func (l LeveledLogger) Tracef(format string, v ...interface{}) { l.Logf(LevelTrace, format, v...) }
