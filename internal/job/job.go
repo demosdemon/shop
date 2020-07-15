@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -14,6 +13,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/demosdemon/shop/internal/config"
+	"github.com/demosdemon/shop/pkg/data"
 	"github.com/demosdemon/shop/pkg/log"
 	"github.com/demosdemon/shop/pkg/shopify"
 )
@@ -32,9 +32,8 @@ func (j *Job) Do(ctx context.Context) error {
 		j.Logger = log.NewLogger(log.LevelWarn, os.Stderr, prefix)
 	}
 
-	client := j.Client
-	if client == nil {
-		client = shopify.New(j.StoreID, j.Username, j.Password, shopify.WithLogger(j))
+	if j.Client == nil {
+		j.Client = shopify.New(j.StoreID, j.Username, j.Password, shopify.WithLogger(j))
 	}
 
 	return j.do(ctx)
@@ -53,16 +52,16 @@ func (j *Job) do(ctx context.Context) (err error) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	results := make(chan json.RawMessage)
+	results := make(chan *data.Item)
 	defer close(results)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		enc := json.NewEncoder(fp)
+		w := data.NewWriter(fp)
 		count := 0
 		for v := range results {
-			if wErr := enc.Encode(v); wErr != nil {
+			if wErr := w.Write(v); wErr != nil {
 				j.Errorf("error writing record to file: %v", wErr)
 				err = multierror.Append(err, wErr)
 				cancel()
@@ -96,7 +95,7 @@ func (j *Job) do(ctx context.Context) (err error) {
 				j.Errorf("error during pagination: %v", err)
 				return err
 			}
-			results <- v.Message()
+			results <- v.Item()
 		}
 		return nil
 	}
@@ -150,9 +149,9 @@ func (j *Job) getMinMaxUpdatedAt(ctx context.Context) (*os.File, time.Time, time
 		return fp, first, last, err
 	}
 
-	seen := make([]time.Time, 0)
-	dec := json.NewDecoder(fp)
-	for dec.More() {
+	seen := 0
+	r := data.NewReader(fp)
+	for r.Scan() {
 		select {
 		case <-ctx.Done():
 			_ = fp.Close()
@@ -160,24 +159,7 @@ func (j *Job) getMinMaxUpdatedAt(ctx context.Context) (*os.File, time.Time, time
 		default:
 		}
 
-		var line map[string]json.RawMessage
-		if err := dec.Decode(&line); err != nil {
-			j.Errorf("invalid json in %q: %v", output, err)
-			_ = fp.Close()
-			return nil, first, last, err
-		}
-
-		sUpdatedAtMsg := line["updated_at"]
-		if sUpdatedAtMsg == nil {
-			j.Warnf("missing `updated_at` key in record: %#v", line)
-			continue
-		}
-
-		var ts time.Time
-		if err := ts.UnmarshalJSON(sUpdatedAtMsg); err != nil {
-			j.Warnf("invalid time format: %v", err)
-			continue
-		}
+		ts := r.Item().UpdatedAt
 
 		if first.IsZero() || ts.Before(first) {
 			first = ts
@@ -187,10 +169,15 @@ func (j *Job) getMinMaxUpdatedAt(ctx context.Context) (*os.File, time.Time, time
 			last = ts
 		}
 
-		seen = append(seen, ts)
+		seen++
 	}
 
-	j.Infof("scanned %d records, oldest %s, newest %s", len(seen), fmtTime(first), fmtTime(last))
+	if err := r.Err(); err != nil {
+		_ = fp.Close()
+		return nil, first, last, err
+	}
+
+	j.Infof("scanned %d records, oldest %s, newest %s", seen, fmtTime(first), fmtTime(last))
 	return fp, first, last, nil
 }
 

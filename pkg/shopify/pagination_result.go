@@ -1,16 +1,16 @@
 package shopify
 
 import (
-	"encoding/json"
+	"github.com/demosdemon/shop/pkg/data"
 )
 
 type PaginationResult struct {
-	msg json.RawMessage
-	err error
+	item *data.Item
+	err  error
 }
 
-func (r PaginationResult) Message() json.RawMessage {
-	return r.msg
+func (r PaginationResult) Item() *data.Item {
+	return r.item
 }
 
 func (r PaginationResult) Err() error {

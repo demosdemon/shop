@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-querystring/query"
 	"github.com/peterhellberg/link"
 
+	"github.com/demosdemon/shop/pkg/data"
 	"github.com/demosdemon/shop/pkg/log"
 	"github.com/demosdemon/shop/pkg/retry"
 )
@@ -126,15 +127,15 @@ func (c *Client) RetryJitter() time.Duration {
 }
 
 func (c *Client) Deserialize(res *http.Response, resource interface{}) error {
-	data, err := ioutil.ReadAll(res.Body)
+	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return err
 	}
 	if err := res.Body.Close(); err != nil {
 		return err
 	}
-	if err := json.Unmarshal(data, resource); err != nil {
-		return NewResponseDecodingError(res, err, data)
+	if err := json.Unmarshal(buf, resource); err != nil {
+		return NewResponseDecodingError(res, err, buf)
 	}
 	return nil
 }
@@ -182,13 +183,15 @@ func (c *Client) Paginate(ctx context.Context, element string, options interface
 			values := resource[element]
 			for _, value := range values {
 				records++
-				ch <- PaginationResult{msg: value}
+				item := new(data.Item)
+				err := json.Unmarshal(value, item)
+				ch <- PaginationResult{item: item, err: NewResponseDecodingError(res, err, value)}
 			}
 
 			options, err = getNextPageOptions(res)
 			if err != nil {
-				data := []byte(url.Values(res.Header).Encode())
-				err := NewResponseDecodingError(res, err, data)
+				header := []byte(url.Values(res.Header).Encode())
+				err := NewResponseDecodingError(res, err, header)
 				ch <- PaginationResult{err: err}
 				return
 			}
@@ -377,11 +380,11 @@ func (c *Client) logBody(body *io.ReadCloser, format string) {
 	if *body == nil {
 		return
 	}
-	data, _ := ioutil.ReadAll(*body)
-	if len(data) > 0 {
-		c.Tracef(format, string(data))
+	buf, _ := ioutil.ReadAll(*body)
+	if len(buf) > 0 {
+		c.Tracef(format, string(buf))
 	}
-	*body = ioutil.NopCloser(bytes.NewReader(data))
+	*body = ioutil.NopCloser(bytes.NewReader(buf))
 }
 
 func (c *Client) Logf(level log.Level, format string, v ...interface{}) {

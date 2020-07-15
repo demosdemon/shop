@@ -11,6 +11,10 @@ import (
 )
 
 func NewResponseDecodingError(res *http.Response, err error, data []byte) error {
+	if err == nil {
+		return nil
+	}
+
 	return ResponseDecodingError{
 		ResponseError: ResponseError{
 			Status:  res.StatusCode,

@@ -6,4 +6,5 @@ type Store struct {
 	StoreID  string `json:"store_id"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Commit   string `json:"commit,omitempty"`
 }

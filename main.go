@@ -7,9 +7,9 @@ import (
 	_log "log"
 	"os"
 	"syscall"
-	"time"
 
 	"github.com/demosdemon/multierrgroup"
+	"github.com/pkg/errors"
 
 	"github.com/demosdemon/shop/internal/config"
 	"github.com/demosdemon/shop/internal/job"
@@ -25,7 +25,14 @@ var elements = []string{
 
 func main() {
 	var cfg config.Runtime
-	parseFlags(&cfg)
+	if err := cfg.ParseArgs(os.Args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			// help has already been displayed
+			os.Exit(1)
+		}
+
+		_log.Fatal(err)
+	}
 
 	ch, err := cfg.LoadStores()
 	if err != nil {
@@ -45,21 +52,6 @@ func main() {
 	if err := g.Wait(); err != nil {
 		_log.Fatal(err)
 	}
-}
-
-func parseFlags(cfg *config.Runtime) {
-	flag.StringVar(&cfg.StoresFile, "stores", "./stores.jsonl", "path to store configuration file")
-	flag.StringVar(&cfg.OutputDirectory, "output", "./out", "output directory to store results")
-	flag.BoolVar(&cfg.PeriodicStackDump, "stack", false, "periodically dump stack traces to `.trace` files in the output directory")
-	flag.DurationVar(&cfg.StackDumpFrequency, "period", time.Minute, "duration between stack dumps")
-	flag.BoolVar(&cfg.DryRun, "dryrun", false, "do not actually call shopify apis")
-	flag.StringVar(&cfg.ShopifyAPIVersion, "shopify-version", shopify.DefaultAPIVersion, "shopify API version")
-	flag.DurationVar(&cfg.HTTPTimeout, "timeout", shopify.DefaultHTTPTimeout, "http timeout per request (some requests may take a long time)")
-	flag.IntVar(&cfg.HTTPRetryCount, "retries", shopify.DefaultRetryCount, "number of attempts to retry each HTTP request before failing")
-	flag.DurationVar(&cfg.HTTPRetryDelay, "delay", shopify.DefaultRetryDelay, "minimum delay to wait before retrying after failures (rate limited errors are handled separately)")
-	flag.DurationVar(&cfg.HTTPRetryJitter, "jitter", shopify.DefaultRetryJitter, "random jitter amount to add in to each wait period")
-	flag.StringVar(&cfg.HTTPUserAgent, "user-agent", shopify.DefaultUserAgent, "user-agent to use in HTTP requests")
-	flag.Parse()
 }
 
 func do(ctx context.Context, store *config.Store, runtime *config.Runtime) func() error {

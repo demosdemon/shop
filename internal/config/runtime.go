@@ -3,16 +3,21 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	_log "log"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/demosdemon/shop/pkg/shopify"
 )
 
 type Runtime struct {
+	RepositoryPath     string
 	StoresFile         string
 	OutputDirectory    string
 	PeriodicStackDump  bool
@@ -24,6 +29,26 @@ type Runtime struct {
 	HTTPRetryDelay     time.Duration
 	HTTPRetryJitter    time.Duration
 	HTTPUserAgent      string
+}
+
+func (r *Runtime) ParseArgs(args []string) error {
+	name := args[0]
+	name = filepath.Base(name)
+	args = args[1:]
+
+	f := flag.NewFlagSet(name, flag.ContinueOnError)
+	f.StringVar(&r.StoresFile, "stores", "./stores.jsonl", "path to store configuration file")
+	f.StringVar(&r.OutputDirectory, "output", "./out", "output directory to store results")
+	f.BoolVar(&r.PeriodicStackDump, "stack", false, "periodically dump stack traces to `.trace` files in the output directory")
+	f.DurationVar(&r.StackDumpFrequency, "period", time.Minute, "duration between stack dumps")
+	f.BoolVar(&r.DryRun, "dryrun", false, "do not actually call shopify apis")
+	f.StringVar(&r.ShopifyAPIVersion, "shopify-version", shopify.DefaultAPIVersion, "shopify API version")
+	f.DurationVar(&r.HTTPTimeout, "timeout", shopify.DefaultHTTPTimeout, "http timeout per request (some requests may take a long time)")
+	f.IntVar(&r.HTTPRetryCount, "retries", shopify.DefaultRetryCount, "number of attempts to retry each HTTP request before failing")
+	f.DurationVar(&r.HTTPRetryDelay, "delay", shopify.DefaultRetryDelay, "minimum delay to wait before retrying after failures (rate limited errors are handled separately)")
+	f.DurationVar(&r.HTTPRetryJitter, "jitter", shopify.DefaultRetryJitter, "random jitter amount to add in to each wait period")
+	f.StringVar(&r.HTTPUserAgent, "user-agent", shopify.DefaultUserAgent, "user-agent to use in HTTP requests")
+	return f.Parse(args)
 }
 
 func (r *Runtime) LoadStores() (<-chan *Store, error) {
