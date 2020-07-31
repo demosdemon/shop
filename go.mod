@@ -3,7 +3,7 @@ module github.com/demosdemon/shop
 go 1.14
 
 require (
-	github.com/aws/aws-sdk-go v1.33.11
+	github.com/aws/aws-sdk-go v1.33.16
 	github.com/demosdemon/multierrgroup v1.0.1
 	github.com/emirpasic/gods v1.12.0
 	github.com/go-git/go-billy/v5 v5.0.0
