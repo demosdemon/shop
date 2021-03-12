@@ -11,7 +11,7 @@ require (
 	github.com/google/go-cmp v0.4.0 // indirect
 	github.com/google/go-querystring v1.0.0
 	github.com/hashicorp/errwrap v1.0.0
-	github.com/hashicorp/go-multierror v1.1.0
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/peterhellberg/link v1.1.0
 	github.com/pkg/errors v0.9.1
