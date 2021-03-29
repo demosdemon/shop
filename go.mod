@@ -15,7 +15,7 @@ require (
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/peterhellberg/link v1.1.0
 	github.com/pkg/errors v0.9.1
-	github.com/tidwall/gjson v1.6.1
+	github.com/tidwall/gjson v1.7.4
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/net v0.0.0-20200822124328-c89045814202 // indirect
 	golang.org/x/sys v0.0.0-20200828194041-157a740278f4 // indirect
