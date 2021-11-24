@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20210920160938-87db9fbc61c7 // indirect
-	github.com/aws/aws-sdk-go v1.41.14
+	github.com/aws/aws-sdk-go v1.42.11
 	github.com/demosdemon/multierrgroup v1.0.1
 	github.com/emirpasic/gods v1.12.0
 	github.com/go-git/go-billy/v5 v5.3.1
